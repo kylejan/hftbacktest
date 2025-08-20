@@ -16,50 +16,52 @@ from ...types import (
     TRADE_EVENT,
     BUY_EVENT,
     SELL_EVENT,
-    event_dtype, DEPTH_BBO_EVENT, EVENT_ARRAY
+    event_dtype,
+    DEPTH_BBO_EVENT,
+    EVENT_ARRAY,
 )
 
 trade_schema = {
-    'exchange': pl.String,
-    'symbol': pl.String,
-    'timestamp': pl.Int64,
-    'local_timestamp': pl.Int64,
-    'id': pl.String,
-    'side': pl.String,
-    'price': pl.Float64,
-    'amount': pl.Float64,
+    "exchange": pl.String,
+    "symbol": pl.String,
+    "timestamp": pl.Int64,
+    "local_timestamp": pl.Int64,
+    "id": pl.String,
+    "side": pl.String,
+    "price": pl.Float64,
+    "amount": pl.Float64,
 }
 
 depth_schema = {
-    'exchange': pl.String,
-    'symbol': pl.String,
-    'timestamp': pl.Int64,
-    'local_timestamp': pl.Int64,
-    'is_snapshot': pl.Boolean,
-    'side': pl.String,
-    'price': pl.Float64,
-    'amount': pl.Float64,
+    "exchange": pl.String,
+    "symbol": pl.String,
+    "timestamp": pl.Int64,
+    "local_timestamp": pl.Int64,
+    "is_snapshot": pl.Boolean,
+    "side": pl.String,
+    "price": pl.Float64,
+    "amount": pl.Float64,
 }
 
 book_ticker_schema = {
-    'exchange': pl.String,
-    'symbol': pl.String,
-    'timestamp': pl.Int64,
-    'local_timestamp': pl.Int64,
-    'ask_amount': pl.Float64,
-    'ask_price': pl.Float64,
-    'bid_price': pl.Float64,
-    'bid_amount': pl.Float64,
+    "exchange": pl.String,
+    "symbol": pl.String,
+    "timestamp": pl.Int64,
+    "local_timestamp": pl.Int64,
+    "ask_amount": pl.Float64,
+    "ask_price": pl.Float64,
+    "bid_price": pl.Float64,
+    "bid_amount": pl.Float64,
 }
 
 
 def convert(
-        input_files: List[str],
-        output_filename: Optional[str] = None,
-        buffer_size: int = 100_000_000,
-        ss_buffer_size: int = 1_000_000,
-        base_latency: float = 0,
-        snapshot_mode: Literal['process', 'ignore_sod', 'ignore'] = 'process',
+    input_files: List[str],
+    output_filename: Optional[str] = None,
+    buffer_size: int = 100_000_000,
+    ss_buffer_size: int = 1_000_000,
+    base_latency: float = 0,
+    snapshot_mode: Literal["process", "ignore_sod", "ignore"] = "process",
 ) -> NDArray:
     r"""
     Converts Tardis.dev data files into a format compatible with HftBacktest.
@@ -101,26 +103,26 @@ def convert(
     row_num = 0
 
     for file in input_files:
-        print('Reading %s' % file)
+        print("Reading %s" % file)
 
         schema = None
-        if 'trades' in file:
+        if "trades" in file:
             schema = trade_schema
-        elif 'incremental_book_L2' in file:
+        elif "incremental_book_L2" in file:
             schema = depth_schema
-        elif 'book_ticker' in file:
+        elif "book_ticker" in file:
             schema = book_ticker_schema
         else:
             # Attempts to infer the file type using its header.
             try:
-                if file.endswith('.gz'):
+                if file.endswith(".gz"):
                     with gzip.open(file) as f:
                         line = f.readline()
-                        header = line.decode().strip().split(',')
+                        header = line.decode().strip().split(",")
                 else:
                     with open(file) as f:
                         line = f.readline()
-                        header = line.strip().split(',')
+                        header = line.strip().split(",")
                 if header == list(trade_schema.keys()):
                     schema = trade_schema
                 elif header == list(depth_schema.keys()):
@@ -135,97 +137,85 @@ def convert(
         if df.columns == list(trade_schema.keys()):
             arr = (
                 df.with_columns(
-                    pl.when(pl.col('side') == 'buy')
-                        .then(BUY_EVENT | TRADE_EVENT)
-                        .when(pl.col('side') == 'sell')
-                        .then(SELL_EVENT | TRADE_EVENT)
-                        .otherwise(TRADE_EVENT)
-                        .cast(pl.UInt64, strict=True)
-                        .alias('ev'),
-                    (pl.col('timestamp') * 1000)
-                        .cast(pl.Int64, strict=True)
-                        .alias('exch_ts'),
-                    (pl.col('local_timestamp') * 1000)
-                        .cast(pl.Int64, strict=True)
-                        .alias('local_ts'),
-                    pl.col('price')
-                        .cast(pl.Float64, strict=True)
-                        .alias('px'),
-                    pl.col('amount')
-                        .cast(pl.Float64, strict=True)
-                        .alias('qty'),
-                    pl.lit(0)
-                        .cast(pl.UInt64, strict=True)
-                        .alias('order_id'),
-                    pl.lit(0)
-                        .cast(pl.Int64, strict=True)
-                        .alias('ival'),
-                    pl.lit(0.0)
-                        .cast(pl.Float64, strict=True)
-                        .alias('fval')
+                    pl.when(pl.col("side") == "buy")
+                    .then(BUY_EVENT | TRADE_EVENT)
+                    .when(pl.col("side") == "sell")
+                    .then(SELL_EVENT | TRADE_EVENT)
+                    .otherwise(TRADE_EVENT)
+                    .cast(pl.UInt64, strict=True)
+                    .alias("ev"),
+                    (pl.col("timestamp") * 1000).cast(pl.Int64, strict=True).alias("exch_ts"),
+                    (pl.col("local_timestamp") * 1000).cast(pl.Int64, strict=True).alias("local_ts"),
+                    pl.col("price").cast(pl.Float64, strict=True).alias("px"),
+                    pl.col("amount").cast(pl.Float64, strict=True).alias("qty"),
+                    pl.lit(0).cast(pl.UInt64, strict=True).alias("order_id"),
+                    pl.lit(0).cast(pl.Int64, strict=True).alias("ival"),
+                    pl.lit(0.0).cast(pl.Float64, strict=True).alias("fval"),
                 )
-                .select(['ev', 'exch_ts', 'local_ts', 'px', 'qty', 'order_id', 'ival', 'fval'])
+                .select(["ev", "exch_ts", "local_ts", "px", "qty", "order_id", "ival", "fval"])
                 .to_numpy(structured=True)
             )
-            tmp[row_num:row_num + len(arr)] = arr[:]
+            tmp[row_num : row_num + len(arr)] = arr[:]
             row_num += len(arr)
         elif df.columns == list(depth_schema.keys()):
             arr = (
                 df.with_columns(
-                    (pl.col('timestamp') * 1000)
-                        .cast(pl.Int64, strict=True)
-                        .alias('exch_ts'),
-                    (pl.col('local_timestamp') * 1000)
-                        .cast(pl.Int64, strict=True)
-                        .alias('local_ts'),
-                    pl.col('price')
-                        .cast(pl.Float64, strict=True)
-                        .alias('px'),
-                    pl.col('amount')
-                        .cast(pl.Float64, strict=True)
-                        .alias('qty'),
-                    pl.when((pl.col('side') == 'bid') | (pl.col('side') == 'buy'))
-                        .then(1)
-                        .when((pl.col('side') == 'ask') | (pl.col('side') == 'sell'))
-                        .then(-1)
-                        .otherwise(0)
-                        .cast(pl.Int8, strict=True)
-                        .alias('side'),
-                    pl.when(pl.col('is_snapshot'))
-                        .then(1)
-                        .otherwise(0)
-                        .cast(pl.Int8, strict=True)
-                        .alias('is_snapshot')
+                    (pl.col("timestamp") * 1000).cast(pl.Int64, strict=True).alias("exch_ts"),
+                    (pl.col("local_timestamp") * 1000).cast(pl.Int64, strict=True).alias("local_ts"),
+                    pl.col("price").cast(pl.Float64, strict=True).alias("px"),
+                    pl.col("amount").cast(pl.Float64, strict=True).alias("qty"),
+                    pl.when((pl.col("side") == "bid") | (pl.col("side") == "buy"))
+                    .then(1)
+                    .when((pl.col("side") == "ask") | (pl.col("side") == "sell"))
+                    .then(-1)
+                    .otherwise(0)
+                    .cast(pl.Int8, strict=True)
+                    .alias("side"),
+                    pl.when(pl.col("is_snapshot"))
+                    .then(1)
+                    .otherwise(0)
+                    .cast(pl.Int8, strict=True)
+                    .alias("is_snapshot"),
                 )
-                .select(['exch_ts', 'local_ts', 'px', 'qty', 'side', 'is_snapshot'])
+                .select(["exch_ts", "local_ts", "px", "qty", "side", "is_snapshot"])
                 .to_numpy(structured=True)
             )
 
             snapshot_mode_flag = 0
-            if snapshot_mode == 'ignore':
+            if snapshot_mode == "ignore":
                 snapshot_mode_flag = SNAPSHOT_MODE_IGNORE
-            elif snapshot_mode == 'ignore_sod':
+            elif snapshot_mode == "ignore_sod":
                 snapshot_mode_flag = SNAPSHOT_MODE_IGNORE_SOD
             row_num = _convert_depth(tmp, arr, row_num, ss_bid, ss_ask, snapshot_mode_flag)
         elif df.columns == list(book_ticker_schema.keys()):
-            raise ValueError('Use `convert_fuse` instead of `convert` to combine book ticker data with the depth data.')
+            arr = (
+                df.with_columns(
+                    (pl.col("timestamp") * 1000).cast(pl.Int64, strict=True).alias("exch_ts"),
+                    (pl.col("local_timestamp") * 1000).cast(pl.Int64, strict=True).alias("local_ts"),
+                    pl.col("ask_amount").cast(pl.Float64, strict=True),
+                    pl.col("ask_price").cast(pl.Float64, strict=True),
+                    pl.col("bid_price").cast(pl.Float64, strict=True),
+                    pl.col("bid_amount").cast(pl.Float64, strict=True),
+                )
+                .select(["exch_ts", "local_ts", "ask_amount", "ask_price", "bid_price", "bid_amount"])
+                .to_numpy(structured=True)
+            )
+            pass
 
     tmp = tmp[:row_num]
 
-    print('Correcting the latency')
+    print("Correcting the latency")
     tmp = correct_local_timestamp(tmp, base_latency)
 
-    print('Correcting the event order')
+    print("Correcting the event order")
     data = correct_event_order(
-        tmp,
-        np.argsort(tmp['exch_ts'], kind='mergesort'),
-        np.argsort(tmp['local_ts'], kind='mergesort')
+        tmp, np.argsort(tmp["exch_ts"], kind="mergesort"), np.argsort(tmp["local_ts"], kind="mergesort")
     )
 
     validate_event_order(data)
 
     if output_filename is not None:
-        print('Saving to %s' % output_filename)
+        print("Saving to %s" % output_filename)
         np.savez_compressed(output_filename, data=data)
 
     return data
@@ -244,9 +234,8 @@ def _convert_depth(out, inp, row_num, ss_bid, ss_ask, snapshot_mode):
     for rn in range(len(inp)):
         row = inp[rn]
         if row.is_snapshot == 1:
-            if (
-                (snapshot_mode == SNAPSHOT_MODE_IGNORE)
-                or (snapshot_mode == SNAPSHOT_MODE_IGNORE_SOD and is_sod_snapshot)
+            if (snapshot_mode == SNAPSHOT_MODE_IGNORE) or (
+                snapshot_mode == SNAPSHOT_MODE_IGNORE_SOD and is_sod_snapshot
             ):
                 continue
             # Prepare to insert DEPTH_SNAPSHOT_EVENT
@@ -294,7 +283,7 @@ def _convert_depth(out, inp, row_num, ss_bid, ss_ask, snapshot_mode):
                     out[row_num].fval = 0
                     row_num += 1
                     # Add DEPTH_SNAPSHOT_EVENT for the bid snapshot
-                    out[row_num:row_num + len(ss_bid)] = ss_bid[:]
+                    out[row_num : row_num + len(ss_bid)] = ss_bid[:]
                     row_num += len(ss_bid)
                 ss_bid_rn = 0
 
@@ -311,7 +300,7 @@ def _convert_depth(out, inp, row_num, ss_bid, ss_ask, snapshot_mode):
                     out[row_num].fval = 0
                     row_num += 1
                     # Add DEPTH_SNAPSHOT_EVENT for the ask snapshot
-                    out[row_num:row_num + len(ss_ask)] = ss_ask[:]
+                    out[row_num : row_num + len(ss_ask)] = ss_ask[:]
                     row_num += len(ss_ask)
                 ss_ask_rn = 0
             # Insert DEPTH_EVENT
@@ -372,8 +361,8 @@ class _Fuse:
                     ss_ask_rn += 1
             else:
                 add = not (
-                        (snapshot_mode == SNAPSHOT_MODE_IGNORE)
-                        or (snapshot_mode == SNAPSHOT_MODE_IGNORE_SOD and is_sod_snapshot)
+                    (snapshot_mode == SNAPSHOT_MODE_IGNORE)
+                    or (snapshot_mode == SNAPSHOT_MODE_IGNORE_SOD and is_sod_snapshot)
                 )
 
                 is_sod_snapshot = False
@@ -435,12 +424,7 @@ class _Fuse:
         self.ev[0].qty = row.bid_amount
         self.depth.process_event(self.ev, 0, True)
 
-    def process(
-            self,
-            depth_arr: NDArray,
-            book_ticker_arr: NDArray,
-            snapshot_mode: int
-    ) -> None:
+    def process(self, depth_arr: NDArray, book_ticker_arr: NDArray, snapshot_mode: int) -> None:
         ticker_rn = 0
         depth_rn = 0
         while True:
@@ -475,15 +459,15 @@ class _Fuse:
 
 
 def convert_fuse(
-        trades_filename: str,
-        depth_filename: str,
-        book_ticker_filename: str,
-        tick_size: float,
-        lot_size: float,
-        output_filename: Optional[str] = None,
-        ss_buffer_size: int = 1_000_000,
-        base_latency: float = 0,
-        snapshot_mode: Literal['process', 'ignore_sod', 'ignore'] = 'process',
+    trades_filename: str,
+    depth_filename: str,
+    book_ticker_filename: str,
+    tick_size: float,
+    lot_size: float,
+    output_filename: Optional[str] = None,
+    ss_buffer_size: int = 1_000_000,
+    base_latency: float = 0,
+    snapshot_mode: Literal["process", "ignore_sod", "ignore"] = "process",
 ) -> NDArray:
     r"""
     Converts Tardis.dev data files into a format compatible with HftBacktest.
@@ -515,131 +499,128 @@ def convert_fuse(
     Returns:
         Converted data compatible with HftBacktest.
     """
-    df = pl.read_csv(trades_filename, schema=trade_schema)
-    if df.columns != list(trade_schema.keys()):
-        raise KeyError
-    trades_arr = (
-        df.with_columns(
-            pl.when(pl.col('side') == 'buy')
-            .then(BUY_EVENT | TRADE_EVENT)
-            .when(pl.col('side') == 'sell')
-            .then(SELL_EVENT | TRADE_EVENT)
-            .otherwise(TRADE_EVENT)
-            .cast(pl.UInt64, strict=True)
-            .alias('ev'),
-            (pl.col('timestamp') * 1000)
-            .cast(pl.Int64, strict=True)
-            .alias('exch_ts'),
-            (pl.col('local_timestamp') * 1000)
-            .cast(pl.Int64, strict=True)
-            .alias('local_ts'),
-            pl.col('price')
-            .cast(pl.Float64, strict=True)
-            .alias('px'),
-            pl.col('amount')
-            .cast(pl.Float64, strict=True)
-            .alias('qty'),
-            pl.lit(0)
-            .cast(pl.UInt64, strict=True)
-            .alias('order_id'),
-            pl.lit(0)
-            .cast(pl.Int64, strict=True)
-            .alias('ival'),
-            pl.lit(0.0)
-            .cast(pl.Float64, strict=True)
-            .alias('fval')
+
+    if trades_filename == "":
+        trades_arr = np.empty(
+            0,
+            dtype=np.dtype(
+                [
+                    ("ev", np.uint64),
+                    ("exch_ts", np.int64),
+                    ("local_ts", np.int64),
+                    ("px", np.float64),
+                    ("qty", np.float64),
+                    ("order_id", np.uint64),
+                    ("ival", np.int64),
+                    ("fval", np.float64),
+                ]
+            ),
         )
-        .select(['ev', 'exch_ts', 'local_ts', 'px', 'qty', 'order_id', 'ival', 'fval'])
-        .to_numpy(structured=True)
-    )
+    else:
+        df = pl.read_csv(trades_filename, schema=trade_schema)
+        if df.columns != list(trade_schema.keys()):
+            raise KeyError
+        trades_arr = (
+            df.with_columns(
+                pl.when(pl.col("side") == "buy")
+                .then(BUY_EVENT | TRADE_EVENT)
+                .when(pl.col("side") == "sell")
+                .then(SELL_EVENT | TRADE_EVENT)
+                .otherwise(TRADE_EVENT)
+                .cast(pl.UInt64, strict=True)
+                .alias("ev"),
+                (pl.col("timestamp") * 1000).cast(pl.Int64, strict=True).alias("exch_ts"),
+                (pl.col("local_timestamp") * 1000).cast(pl.Int64, strict=True).alias("local_ts"),
+                pl.col("price").cast(pl.Float64, strict=True).alias("px"),
+                pl.col("amount").cast(pl.Float64, strict=True).alias("qty"),
+                pl.lit(0).cast(pl.UInt64, strict=True).alias("order_id"),
+                pl.lit(0).cast(pl.Int64, strict=True).alias("ival"),
+                pl.lit(0.0).cast(pl.Float64, strict=True).alias("fval"),
+            )
+            .select(["ev", "exch_ts", "local_ts", "px", "qty", "order_id", "ival", "fval"])
+            .to_numpy(structured=True)
+        )
 
     df = pl.read_csv(book_ticker_filename, schema=book_ticker_schema)
     if df.columns != list(book_ticker_schema.keys()):
         raise KeyError
     ticker_arr = (
         df.with_columns(
-            (pl.col('timestamp') * 1000)
-            .cast(pl.Int64, strict=True)
-            .alias('exch_ts'),
-            (pl.col('local_timestamp') * 1000)
-            .cast(pl.Int64, strict=True)
-            .alias('local_ts'),
-            pl.col('ask_amount')
-            .cast(pl.Float64, strict=True),
-            pl.col('ask_price')
-            .cast(pl.Float64, strict=True),
-            pl.col('bid_price')
-            .cast(pl.Float64, strict=True),
-            pl.col('bid_amount')
-            .cast(pl.Float64, strict=True),
-            )
-        .select(['exch_ts', 'local_ts', 'ask_amount', 'ask_price', 'bid_price', 'bid_amount'])
+            (pl.col("timestamp") * 1000).cast(pl.Int64, strict=True).alias("exch_ts"),
+            (pl.col("local_timestamp") * 1000).cast(pl.Int64, strict=True).alias("local_ts"),
+            pl.col("ask_amount").cast(pl.Float64, strict=True),
+            pl.col("ask_price").cast(pl.Float64, strict=True),
+            pl.col("bid_price").cast(pl.Float64, strict=True),
+            pl.col("bid_amount").cast(pl.Float64, strict=True),
+        )
+        .select(["exch_ts", "local_ts", "ask_amount", "ask_price", "bid_price", "bid_amount"])
         .to_numpy(structured=True)
     )
 
-    df = pl.read_csv(depth_filename, schema=depth_schema)
-    if df.columns != list(depth_schema.keys()):
-        raise KeyError
-    depth_arr = (
-        df.with_columns(
-            (pl.col('timestamp') * 1000)
-            .cast(pl.Int64, strict=True)
-            .alias('exch_ts'),
-            (pl.col('local_timestamp') * 1000)
-            .cast(pl.Int64, strict=True)
-            .alias('local_ts'),
-            pl.col('price')
-            .cast(pl.Float64, strict=True)
-            .alias('px'),
-            pl.col('amount')
-            .cast(pl.Float64, strict=True)
-            .alias('qty'),
-            pl.when((pl.col('side') == 'bid') | (pl.col('side') == 'buy'))
-            .then(1)
-            .when((pl.col('side') == 'ask') | (pl.col('side') == 'sell'))
-            .then(-1)
-            .otherwise(0)
-            .cast(pl.Int8, strict=True)
-            .alias('side'),
-            pl.when(pl.col('is_snapshot'))
-            .then(1)
-            .otherwise(0)
-            .cast(pl.Int8, strict=True)
-            .alias('is_snapshot')
+    if depth_filename == "":
+        depth_arr = np.empty(
+            0,
+            dtype=np.dtype(
+                [
+                    ("exch_ts", np.int64),
+                    ("local_ts", np.int64),
+                    ("px", np.float64),
+                    ("qty", np.float64),
+                    ("side", np.int8),
+                    ("is_snapshot", np.int8),
+                ]
+            ),
         )
-        .select(['exch_ts', 'local_ts', 'px', 'qty', 'side', 'is_snapshot'])
-        .to_numpy(structured=True)
-    )
+    else:
+        df = pl.read_csv(depth_filename, schema=depth_schema)
+        if df.columns != list(depth_schema.keys()):
+            raise KeyError
+        depth_arr = (
+            df.with_columns(
+                (pl.col("timestamp") * 1000).cast(pl.Int64, strict=True).alias("exch_ts"),
+                (pl.col("local_timestamp") * 1000).cast(pl.Int64, strict=True).alias("local_ts"),
+                pl.col("price").cast(pl.Float64, strict=True).alias("px"),
+                pl.col("amount").cast(pl.Float64, strict=True).alias("qty"),
+                pl.when((pl.col("side") == "bid") | (pl.col("side") == "buy"))
+                .then(1)
+                .when((pl.col("side") == "ask") | (pl.col("side") == "sell"))
+                .then(-1)
+                .otherwise(0)
+                .cast(pl.Int8, strict=True)
+                .alias("side"),
+                pl.when(pl.col("is_snapshot")).then(1).otherwise(0).cast(pl.Int8, strict=True).alias("is_snapshot"),
+            )
+            .select(["exch_ts", "local_ts", "px", "qty", "side", "is_snapshot"])
+            .to_numpy(structured=True)
+        )
 
     snapshot_mode_flag = 0
-    if snapshot_mode == 'ignore':
+    if snapshot_mode == "ignore":
         snapshot_mode_flag = SNAPSHOT_MODE_IGNORE
-    elif snapshot_mode == 'ignore_sod':
+    elif snapshot_mode == "ignore_sod":
         snapshot_mode_flag = SNAPSHOT_MODE_IGNORE_SOD
 
     fuse = _Fuse(tick_size, lot_size, ss_buffer_size)
     fuse.process(depth_arr, ticker_arr, snapshot_mode_flag)
 
     tmp = np.empty(len(trades_arr) + len(fuse.fused_events), event_dtype)
-    tmp[:len(trades_arr)] = trades_arr
-    tmp[len(trades_arr):] = fuse.fused_events
+    tmp[: len(trades_arr)] = trades_arr
+    tmp[len(trades_arr) :] = fuse.fused_events
 
     fuse.close()
 
-    print('Correcting the latency')
+    print("Correcting the latency")
     tmp = correct_local_timestamp(tmp, base_latency)
 
-    print('Correcting the event order')
+    print("Correcting the event order")
     data = correct_event_order(
-        tmp,
-        np.argsort(tmp['exch_ts'], kind='mergesort'),
-        np.argsort(tmp['local_ts'], kind='mergesort')
+        tmp, np.argsort(tmp["exch_ts"], kind="mergesort"), np.argsort(tmp["local_ts"], kind="mergesort")
     )
 
     validate_event_order(data)
 
     if output_filename is not None:
-        print('Saving to %s' % output_filename)
+        print("Saving to %s" % output_filename)
         np.savez_compressed(output_filename, data=data)
 
     return data
